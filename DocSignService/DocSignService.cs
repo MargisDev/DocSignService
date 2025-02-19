@@ -1,4 +1,7 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Collections;
+using System.Diagnostics;
+using System.Reflection;
 using System.ServiceModel;
 using System.ServiceProcess;
 
@@ -21,13 +24,16 @@ namespace DocSignService
         serviceHost.Close();
       }
 
-      // Create a ServiceHost for the SignDocService type and provide the base address.
+      Type type = typeof(Org.BouncyCastle.Security.SignerUtilities);
+      FieldInfo info = type.GetField("algorithms", BindingFlags.NonPublic | BindingFlags.Static);
+      var AlgorithmMap = (IDictionary)info.GetValue(null);
+      AlgorithmMap["SHA256WITH1.2.840.10045.4.3.2"] = "SHA-256withECDSA";
+      AlgorithmMap["SHA384WITH1.2.840.10045.4.3.3"] = "SHA-384withECDSA";
+      AlgorithmMap["SHA384WITH1.2.840.10045.4.3.4"] = "SHA-512withECDSA";
+
+      AppSettingsCache.PreloadAppSettings();
       serviceHost = new ServiceHost(typeof(SignDocService));
-
-      // Open the ServiceHost to start listening for messages.
       serviceHost.Open();
-
-      EventLog.WriteEntry("DocSignService started successfully.");
     }
 
     protected override void OnStop()
@@ -37,8 +43,6 @@ namespace DocSignService
         serviceHost.Close();
         serviceHost = null;
       }
-
-      EventLog.WriteEntry("DocSignService stopped successfully.");
     }
   }
 }

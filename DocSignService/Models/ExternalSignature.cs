@@ -87,6 +87,11 @@ namespace DocSignService.Models
       }
       else
       {
+        if (String.IsNullOrEmpty(AppSettingsCache.GetAppSetting("ClientApiURL")))
+        {
+          DocSignHelper.Log($"ClientApiURL is missing in app.config", LogLevelEnum.Error, fAuthenticationToken);
+          return null;
+        }
         HashModel hashesSend = new HashModel();
         hashesSend.Hash = Hash;
         var serializedHash = DocSignHelper.Base64Encode(DocSignHelper.SerializeItemJSON(hashesSend));

@@ -8,5 +8,8 @@ namespace DocSignService
   {
     [OperationContract]
     DocSignResponse SignDoc(string input);
+
+    [OperationContract]
+    VerifySignatureResponse VerifySignature(string input);
   }
 }

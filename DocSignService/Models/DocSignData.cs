@@ -1,4 +1,5 @@
 ﻿using iTextSharp.text.pdf;
+using System;
 using System.Collections.Generic;
 
 namespace DocSignService.Models
@@ -67,5 +68,51 @@ namespace DocSignService.Models
     public string PdfFakeSignedValue { get; set; }
     public string PdfHashToSignBase64 { get; set; }
     public string SignedPdfWithMissingSignatureB64 { get; set; }
+  }
+
+  public class VerifySignatureRequest
+  {
+    public byte[] PdfDocument { get; set; }
+  }
+  public class VerifySignatureResponse
+  {
+    public List<PdfPKCS7Dto> SignatureList { get; set; }
+    public string ErrorMessage { get;set; }
+  }
+
+  public class PdfPKCS7Dto
+  {
+    public string SignatureName { get; set; }
+    public bool VerifiedSignature { get; set; }
+    public string VerifiedSignatureErrorMessage { get; set; }
+    public bool IsValidSignature { get; set; }
+    public DateTime SignDate {  get; set; }
+    public byte[] SigningCertificate { get; set; }
+    public string SignName { get; set; }
+    public DateTime TimeStampDate { get; set; }
+    public TimeStampTokenDto TimeStampToken { get; set; }
+    public byte[] TimeStampTokenEncoded { get; set; }
+  }  
+
+  public class TimeStampTokenDto
+  {
+    public byte[] Nonce { get; set; }        
+    public long Seconds { get; set; }
+    public long Millis { get; set; }
+    public long Micros { get; set; }
+    public DateTime GeneralizedTime { get; set; }
+    public string Version { get; set; }
+    public bool Ordering { get; set; }
+    public string PolicyId { get; set; }
+    public DateTime SignDate { get; set; }
+    public bool IsValidSignature { get; set; }
+
+  }
+
+  public enum LogLevelEnum
+  {
+    Always = 0,
+    Error = 1,
+    Debug = 2,
   }
 }
