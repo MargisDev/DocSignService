@@ -1,6 +1,9 @@
-﻿using Newtonsoft.Json;
+﻿using DocSignService.Models;
+using iTextSharp.text.pdf.security;
+using Newtonsoft.Json;
 using System;
 using System.Configuration;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -14,6 +17,32 @@ namespace DocSignService
 {
   public class DocSignHelper
   {
+    private static object fFileLock = new object();
+
+    public static void Log(string message, LogLevelEnum logLevel, string authenticationToken)
+    {
+      var logPath = AppSettingsCache.GetAppSetting("LogLocation");
+      if (String.IsNullOrEmpty(logPath))
+        return;
+      LogLevelEnum logLevelSettings;
+      if (!Enum.TryParse(AppSettingsCache.GetAppSetting("LogLevel"), out logLevelSettings))
+        logLevelSettings = LogLevelEnum.Error;
+      if (logLevel <= logLevelSettings)
+      {
+        var logLine = string.Format(
+          "{0}\t{1}\t{2}\t{3}{4}",
+          DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+          authenticationToken,
+          logLevel.ToString(),
+          message,
+          Environment.NewLine);
+        
+        lock (fFileLock)
+        {
+          File.AppendAllText(logPath, logLine);
+        }
+      }
+    }
     public static bool IsEccPublicKey(X509Certificate2 certificate)
     {
       if (certificate.PublicKey.Oid.FriendlyName == "ECC")
@@ -51,7 +80,10 @@ namespace DocSignService
       var base64String = Convert.ToBase64String(plainTextBytes);
       byte[] buffer = Convert.FromBase64String(base64String);
       string s = Encoding.UTF8.GetString(buffer);
-      JavaScriptSerializer js = new JavaScriptSerializer();
+      JavaScriptSerializer js = new JavaScriptSerializer
+      {
+        MaxJsonLength = Int32.MaxValue  // Set to the maximum possible length
+      };
 
       return js.Deserialize(s, type);
     }
@@ -59,7 +91,7 @@ namespace DocSignService
     private static HttpClient InitClient(string authenticationToken)
     {
       HttpClient client = new HttpClient();
-      client.BaseAddress = new Uri(ConfigurationManager.AppSettings["ClientApiURL"]);
+      client.BaseAddress = new Uri(AppSettingsCache.GetAppSetting("ClientApiURL"));
       client.DefaultRequestHeaders.Accept.Clear();
       client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
       client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authenticationToken);
@@ -70,7 +102,7 @@ namespace DocSignService
     {
       using (var client = InitClient(fAuthenticationToken))
       {
-        string updateTokenUrl = ConfigurationManager.AppSettings["ClientApiURL"] + "signatures/setHashSignature/" + fAuthenticationToken;
+        string updateTokenUrl = AppSettingsCache.GetAppSetting("ClientApiURL") + "signatures/setHashSignature/" + fAuthenticationToken;
         var responseUpdate = client.PutAsJsonAsync<HashModel>(updateTokenUrl, hashes).Result;
         if (responseUpdate.IsSuccessStatusCode)
         {
@@ -78,6 +110,7 @@ namespace DocSignService
         }
         else
         {
+          Log($"CacheTokenWithData unsuccessful- statusCode={responseUpdate.StatusCode};", LogLevelEnum.Error, fAuthenticationToken);
           return false;
         }
       }
@@ -87,7 +120,7 @@ namespace DocSignService
     {
       using (var client = InitClient(fAuthenticationToken))
       {
-        string updateTokenUrl = ConfigurationManager.AppSettings["ClientApiURL"] + "signatures/" + fAuthenticationToken;
+        string updateTokenUrl = AppSettingsCache.GetAppSetting("ClientApiURL") + "signatures/" + fAuthenticationToken;
         var responseGet = client.GetAsync(updateTokenUrl).Result;
         if (responseGet.IsSuccessStatusCode)
         {
@@ -96,6 +129,7 @@ namespace DocSignService
         }
         else
         {
+          Log($"CacheTokenWithData unsuccessful- statusCode={responseGet.StatusCode};", LogLevelEnum.Error, fAuthenticationToken);
           return null;
         }
       }
@@ -143,6 +177,41 @@ namespace DocSignService
             throw new NotSupportedException("Unsupported hash algorithm " + hashAlgorithm);
           }
       }
+    }
+
+    public static PdfPKCS7Dto GetPdfPKCS7Dto(string signatureName, PdfPKCS7 pk)
+    {
+      var result = new PdfPKCS7Dto();
+      result.IsValidSignature = pk.Verify();
+      result.SigningCertificate = pk.SigningCertificate.GetEncoded();
+      result.SignatureName = signatureName;
+      result.VerifiedSignature = true;
+      result.TimeStampDate = pk.TimeStampDate;
+      if (pk.TimeStampToken != null) 
+      {
+        result.TimeStampTokenEncoded = pk.TimeStampToken.GetEncoded();
+        var tst = new TimeStampTokenDto();
+        tst.IsValidSignature = pk.VerifyTimestampImprint();
+        if (pk.TimeStampToken.TimeStampInfo.TstInfo.Nonce != null)
+          tst.Nonce = pk.TimeStampToken.TimeStampInfo.TstInfo.Nonce.GetEncoded();
+        tst.SignDate = pk.TimeStampDate;
+        tst.Micros = pk.TimeStampToken.TimeStampInfo.GenTimeAccuracy == null ? 0 : pk.TimeStampToken.TimeStampInfo.GenTimeAccuracy.Micros;
+        tst.Millis = pk.TimeStampToken.TimeStampInfo.GenTimeAccuracy == null ? 0 : pk.TimeStampToken.TimeStampInfo.GenTimeAccuracy.Millis;
+        tst.Seconds = pk.TimeStampToken.TimeStampInfo.GenTimeAccuracy == null ? 0 : pk.TimeStampToken.TimeStampInfo.GenTimeAccuracy.Seconds;
+        tst.GeneralizedTime = pk.TimeStampToken.TimeStampInfo.TstInfo.GenTime.ToDateTime();
+        tst.Version = pk.TimeStampToken.ToCmsSignedData().Version.ToString();
+        tst.Ordering = pk.TimeStampToken.TimeStampInfo.TstInfo.Ordering.IsTrue;
+        tst.PolicyId = pk.TimeStampToken.TimeStampInfo.TstInfo.Policy.ToString();
+
+        result.TimeStampToken = tst;
+      }
+      result.SignDate = pk.SignDate;
+      if (pk.SigningCertificate != null)
+      {
+        result.SigningCertificate = pk.SigningCertificate.GetEncoded();
+      }
+      result.SignName = pk.SignName;
+      return result;
     }
   }
 }
