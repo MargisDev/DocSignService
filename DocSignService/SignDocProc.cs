@@ -24,8 +24,7 @@ namespace DocSignService
           DocSignHelper.Log($"Request is null", LogLevelEnum.Error, null);
           return result;
         }
-
-        DocSignHelper.Log($"request deserialized.", LogLevelEnum.Debug, input.AuthenticationToken);
+        
         var msSignedPdfWithMissingPkcs7Signature = new MemoryStream();
         if (input.PdfToSign == null || input.PdfToSign.Length == 0)
         {
@@ -117,7 +116,7 @@ namespace DocSignService
         var es = new ExternalSignature(signerCertificate, input.HashAlgorithm ?? "SHA1", sap, input.AuthenticationToken, input.IsExternalSigning);
 
         DocSignHelper.Log($"before SignDetached", LogLevelEnum.Debug, input.AuthenticationToken);
-        MakeSignatureMod.SignDetached(sap, es, chain, null, null, null, 0, CryptoStandard.CMS);
+        MakeSignatureMod.SignDetached(sap, es, chain, null, null, null, 0, CryptoStandard.CADES);
         var signatureLength = es.Signature == null ? 0 : es.Signature.Length;
         var signatureMessageLength = es.SignatureMessage == null ? 0 : es.SignatureMessage.Length;
         DocSignHelper.Log($"after SignDetached: SignatureLength={signatureLength}, SignatureMessageLength={signatureMessageLength}", LogLevelEnum.Debug, input.AuthenticationToken);
@@ -126,8 +125,20 @@ namespace DocSignService
         result.PdfHashToSignBase64 = Convert.ToBase64String(es.SignatureMessage);
         result.SignedPdfWithMissingSignatureB64 = Convert.ToBase64String(msSignedPdfWithMissingPkcs7Signature.GetBuffer());
       }
-      catch(Exception ex)
+      catch (AggregateException aex)
       {
+        result.ErrorMessage = aex.Message;
+        var flat = aex.Flatten();
+        foreach (var inner in flat.InnerExceptions)
+        {
+          DocSignHelper.Log($"ERROR(flat)! errorMessge={inner.ToString()}", LogLevelEnum.Error, input.AuthenticationToken);
+        }
+
+        throw;
+      }
+      catch (Exception ex)
+      {
+        result.ErrorMessage = ex.Message;
         DocSignHelper.Log($"ERROR! errorMessge={ex.Message}", LogLevelEnum.Error, input.AuthenticationToken);
       }
       return result;

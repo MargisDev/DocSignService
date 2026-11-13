@@ -11,5 +11,8 @@ namespace DocSignService
 
     [OperationContract]
     VerifySignatureResponse VerifySignature(string input);
+
+    [OperationContract]
+    string GetDocSignServiceVersion();
   }
 }

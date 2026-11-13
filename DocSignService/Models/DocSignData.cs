@@ -68,6 +68,7 @@ namespace DocSignService.Models
     public string PdfFakeSignedValue { get; set; }
     public string PdfHashToSignBase64 { get; set; }
     public string SignedPdfWithMissingSignatureB64 { get; set; }
+    public string ErrorMessage { get; set; }
   }
 
   public class VerifySignatureRequest
@@ -78,6 +79,7 @@ namespace DocSignService.Models
   {
     public List<PdfPKCS7Dto> SignatureList { get; set; }
     public string ErrorMessage { get;set; }
+    public int ErrorEnum { get; set; }
   }
 
   public class PdfPKCS7Dto
@@ -114,5 +116,11 @@ namespace DocSignService.Models
     Always = 0,
     Error = 1,
     Debug = 2,
+  }
+
+  public enum ErrorEnum
+  {
+    DeserializationError = 0,
+    ErrorOpeningPdf = 1
   }
 }

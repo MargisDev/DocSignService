@@ -3,6 +3,7 @@ using iTextSharp.text.pdf;
 using iTextSharp.text.pdf.security;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace DocSignService
 {
@@ -21,6 +22,7 @@ namespace DocSignService
         DocSignHelper.Log("deserialization error: ", LogLevelEnum.Error, e.Message);
         return new DocSignResponse();
       }
+      DocSignHelper.Log($"request deserialized.", LogLevelEnum.Debug, request.AuthenticationToken);
       var result = SignDocProc.SignPdfDoc(request).Result;
       DocSignHelper.Log("signing finished", LogLevelEnum.Debug, request.AuthenticationToken);
       return result;
@@ -29,6 +31,8 @@ namespace DocSignService
     public VerifySignatureResponse VerifySignature(string input)
     {
       var result = new VerifySignatureResponse();
+      List<string> names = new List<string>();
+      AcroFields af;
       DocSignHelper.Log("verifySignature started", LogLevelEnum.Debug, null);
       VerifySignatureRequest request;
       try
@@ -39,12 +43,22 @@ namespace DocSignService
       {
         DocSignHelper.Log("deserialization verifySignature error: ", LogLevelEnum.Error, e.Message);
         result.ErrorMessage = e.Message;
+        result.ErrorEnum = (int)ErrorEnum.DeserializationError;
         return result;
       }
-
-      PdfReader reader = new PdfReader(request.PdfDocument);
-      AcroFields af = reader.AcroFields;
-      var names = af.GetSignatureNames();
+      try
+      {
+        PdfReader reader = new PdfReader(request.PdfDocument);
+        af = reader.AcroFields;
+        names = af.GetSignatureNames();
+      }
+      catch (Exception e)
+      {
+        DocSignHelper.Log("Error opening PDF: ", LogLevelEnum.Error, e.Message);
+        result.ErrorMessage = e.Message;
+        result.ErrorEnum = (int)ErrorEnum.ErrorOpeningPdf;
+        return result;
+      }
       var signatureList = new List<PdfPKCS7Dto>();
       foreach(string name in names)
       {
@@ -54,11 +68,29 @@ namespace DocSignService
           signatureList.Add(DocSignHelper.GetPdfPKCS7Dto(name, pk));
         }
         catch (Exception e) {
+          signatureList.Add(new PdfPKCS7Dto() { SignatureName = name });
           DocSignHelper.Log($"Error Verifying signature '{name}'", LogLevelEnum.Error, e.Message);
         }
       }
       result.SignatureList = signatureList;
+      DocSignHelper.Log("verifySignature finished", LogLevelEnum.Debug, null);
       return result;
+    }
+
+    public string GetDocSignServiceVersion()
+    {
+      var mod = System.Reflection.Assembly.GetExecutingAssembly().GetCustomAttributes(false);
+      string product = null;
+      string version = Assembly.GetExecutingAssembly().GetName().Version.ToString();
+      foreach (object o in mod)
+      {
+        var productAttr = o as AssemblyProductAttribute;
+        if (productAttr != null)
+          product = productAttr.Product;       
+      }
+      if (product != null || version != null)
+        return string.Join(" ", product, version);
+      return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
     }
   }
 }

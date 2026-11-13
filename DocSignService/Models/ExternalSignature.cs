@@ -87,7 +87,7 @@ namespace DocSignService.Models
       }
       else
       {
-        if (String.IsNullOrEmpty(AppSettingsCache.GetAppSetting("ClientApiURL")))
+        if (String.IsNullOrEmpty(AppSettingsCache.GetAppSetting(Constants.ClientApiURL)))
         {
           DocSignHelper.Log($"ClientApiURL is missing in app.config", LogLevelEnum.Error, fAuthenticationToken);
           return null;
@@ -178,6 +178,10 @@ namespace DocSignService.Models
         return 128;
       if (fCertificate.PublicKey.Key.KeySize == 2048)
         return 256;
+      if (fCertificate.PublicKey.Key.KeySize == 3072)
+        return 384;
+      if (fCertificate.PublicKey.Key.KeySize == 4096)
+        return 512;
       throw new Exception("Unsuporrted certificate key length");
     }
 

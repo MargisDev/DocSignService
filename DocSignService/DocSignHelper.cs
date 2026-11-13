@@ -21,26 +21,29 @@ namespace DocSignService
 
     public static void Log(string message, LogLevelEnum logLevel, string authenticationToken)
     {
-      var logPath = AppSettingsCache.GetAppSetting("LogLocation");
-      if (String.IsNullOrEmpty(logPath))
+      var logPath = AppSettingsCache.GetAppSetting(Constants.LogLocation);
+      if (String.IsNullOrEmpty(logPath) || string.IsNullOrEmpty(Path.GetExtension(logPath)))
         return;
       LogLevelEnum logLevelSettings;
-      if (!Enum.TryParse(AppSettingsCache.GetAppSetting("LogLevel"), out logLevelSettings))
+      if (!Enum.TryParse(AppSettingsCache.GetAppSetting(Constants.LogLevel), out logLevelSettings))
         logLevelSettings = LogLevelEnum.Error;
       if (logLevel <= logLevelSettings)
       {
         var logLine = string.Format(
           "{0}\t{1}\t{2}\t{3}{4}",
-          DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+          DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss.fff"),
           authenticationToken,
           logLevel.ToString(),
           message,
           Environment.NewLine);
-        
-        lock (fFileLock)
+        try
         {
-          File.AppendAllText(logPath, logLine);
+          lock (fFileLock)
+          {
+            File.AppendAllText(logPath, logLine);
+          }
         }
+        catch { }
       }
     }
     public static bool IsEccPublicKey(X509Certificate2 certificate)
@@ -76,22 +79,18 @@ namespace DocSignService
 
     public static object DeserializeItemJSON(string inputString, Type type)
     {
-      var plainTextBytes = Encoding.UTF8.GetBytes(inputString);
-      var base64String = Convert.ToBase64String(plainTextBytes);
-      byte[] buffer = Convert.FromBase64String(base64String);
-      string s = Encoding.UTF8.GetString(buffer);
-      JavaScriptSerializer js = new JavaScriptSerializer
+      using (StringReader stringReader = new StringReader(inputString))
+      using (JsonTextReader jsonReader = new JsonTextReader(stringReader))
       {
-        MaxJsonLength = Int32.MaxValue  // Set to the maximum possible length
-      };
-
-      return js.Deserialize(s, type);
+        JsonSerializer serializer = new JsonSerializer();
+        return serializer.Deserialize(jsonReader, type);
+      }
     }
 
     private static HttpClient InitClient(string authenticationToken)
     {
       HttpClient client = new HttpClient();
-      client.BaseAddress = new Uri(AppSettingsCache.GetAppSetting("ClientApiURL"));
+      client.BaseAddress = new Uri(AppSettingsCache.GetAppSetting(Constants.ClientApiURL));
       client.DefaultRequestHeaders.Accept.Clear();
       client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
       client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authenticationToken);
@@ -102,7 +101,7 @@ namespace DocSignService
     {
       using (var client = InitClient(fAuthenticationToken))
       {
-        string updateTokenUrl = AppSettingsCache.GetAppSetting("ClientApiURL") + "signatures/setHashSignature/" + fAuthenticationToken;
+        string updateTokenUrl = AppSettingsCache.GetAppSetting(Constants.ClientApiURL) + "signatures/setHashSignature/" + fAuthenticationToken;
         var responseUpdate = client.PutAsJsonAsync<HashModel>(updateTokenUrl, hashes).Result;
         if (responseUpdate.IsSuccessStatusCode)
         {
@@ -120,7 +119,7 @@ namespace DocSignService
     {
       using (var client = InitClient(fAuthenticationToken))
       {
-        string updateTokenUrl = AppSettingsCache.GetAppSetting("ClientApiURL") + "signatures/" + fAuthenticationToken;
+        string updateTokenUrl = AppSettingsCache.GetAppSetting(Constants.ClientApiURL) + "signatures/" + fAuthenticationToken;
         var responseGet = client.GetAsync(updateTokenUrl).Result;
         if (responseGet.IsSuccessStatusCode)
         {
@@ -191,7 +190,7 @@ namespace DocSignService
       {
         result.TimeStampTokenEncoded = pk.TimeStampToken.GetEncoded();
         var tst = new TimeStampTokenDto();
-        tst.IsValidSignature = pk.VerifyTimestampImprint();
+        tst.IsValidSignature = pk.IsTsp ? result.IsValidSignature : pk.VerifyTimestampImprint();
         if (pk.TimeStampToken.TimeStampInfo.TstInfo.Nonce != null)
           tst.Nonce = pk.TimeStampToken.TimeStampInfo.TstInfo.Nonce.GetEncoded();
         tst.SignDate = pk.TimeStampDate;
